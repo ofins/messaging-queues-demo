@@ -18,7 +18,9 @@ const run = async () => {
   await consumer.run({
     eachMessage: async ({ topic, partition, message }) => {
       try {
-        const order = JSON.parse(message.value.toString());
+        const parsedMessage = JSON.parse(message.value.toString());
+        const order = parsedMessage.payload;
+
         ordersProcessed = Number(ordersProcessed) + 1;
         totalRevenue += Number(order.amount);
 

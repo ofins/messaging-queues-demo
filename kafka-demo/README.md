@@ -10,8 +10,12 @@ cp .env.example .env
 docker-compose down -v --remove-orphans # Clean up any old containers
 docker-compose up -d
 
-# Wait for services to be ready
-sleep 60
+# Create orders schema (will automate this later)
+docker exec -it db psql -U admin -d orders_db
+CREATE SCHEMA orders;
+
+# Inspect log to make sure connection established before proceeding
+docker-compose logs -f connect
 
 # Create Kafka topics
 node -e "import('./kafkaConfig.js').then(m => m.ensureTopics())"
@@ -26,14 +30,25 @@ node analytics.js
 node producer.js
 
 # Create JDBC sink connector
-curl -X POST -H "Content-Type: application/json" --data @order-sink-connector.json http://localhost:8083/connectors
+curl -X POST -H "Content-Type: application/json" --data @orders-validated.json http://localhost:8083/connectors
+
+# Delete connector if needed
+curl -X DELETE http://localhost:8083/connectors/orders-validated
 
 # Check connector status
-curl http://localhost:8083/connectors/order-validated-sink/status
+curl http://localhost:8083/connectors/orders-validated/status | jq .
 
-# Check database for data
-docker exec -it db psql -U admin -d orders_db -c "\dt"
-docker exec -it db psql -U admin -d orders_db -c "SELECT COUNT(*) FROM orders_validated;"
+# Check connector config
+curl http://localhost:8083/connectors/orders-validated/config | jq .
+
+# Connect to Postgres container
+docker exec -it db psql -U admin -d orders_db
+
+# List tables in orders schema
+\dt orders.*
+
+# query
+SELECT * FROM orders.validated LIMIT 10;
 ```
 
 ### Useful debugging
@@ -68,13 +83,10 @@ docker exec -it kafka1 kafka-consumer-groups --bootstrap-server kafka1:9094,kafk
 
 # Check Connect connector status
 curl http://localhost:8083/connectors
-curl http://localhost:8083/connectors/order-validated-sink/status
+curl http://localhost:8083/connectors/orders-validated/status
 
 # Check available connector plugins
 curl http://localhost:8083/connector-plugins
-
-# Delete connector if needed
-curl -X DELETE http://localhost:8083/connectors/order-validated-sink
 ```
 
 ### Bugs Encountered
@@ -105,3 +117,8 @@ curl -X DELETE http://localhost:8083/connectors/order-validated-sink
    - fixed `validator.js` was not validating correctly due to Typo. Did not solve the issue.
    - fixed `order-sink-connector.json` to treat keys as string and values as JSON. Now, connectors status is successful, but DB still has no data.
    - after running for a while, status fails again.
+   - added order schema to `producer.js` and `validator.js` and now connection to Kafka Connect is stable. But still no data in DB.
+
+4. ERROR: schema "orders" does not exist
+
+- solved by creating schema `orders` before connecting to JDBC Sink

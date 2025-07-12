@@ -3,6 +3,20 @@ import { v4 as uuidv4 } from "uuid";
 
 const producer = createProducer();
 
+const ORDER_SCHEMA = {
+  type: "struct",
+  fields: [
+    { field: "orderId", type: "string" },
+    { field: "customerId", type: "string" },
+    { field: "amount", type: "double" },
+    { field: "item", type: "string" },
+    { field: "timestamp", type: "string" },
+    { field: "status", type: "string" },
+  ],
+  optional: false,
+  name: "OrderValidated", // Name your schema
+};
+
 const run = async () => {
   await ensureTopics();
   await producer.connect();
@@ -24,13 +38,18 @@ const run = async () => {
       status: "NEW",
     };
 
+    const messageValue = {
+      schema: ORDER_SCHEMA,
+      payload: order,
+    };
+
     try {
       await producer.send({
         topic: TOPICS.ORDERS_RAW,
         messages: [
           {
             key: orderId,
-            value: JSON.stringify(order),
+            value: JSON.stringify(messageValue),
           },
         ],
       });

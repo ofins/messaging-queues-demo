@@ -14,7 +14,8 @@ const run = async () => {
   await consumer.run({
     eachMessage: async ({ topic, partition, message }) => {
       try {
-        const order = JSON.parse(message.value.toString());
+        const parsedMessage = JSON.parse(message.value.toString());
+        const order = parsedMessage.payload;
         console.log(
           `[Payment] Processing payment for Order ${order.orderId}, Amount: $${order.amount} from Partition ${partition}...`
         );

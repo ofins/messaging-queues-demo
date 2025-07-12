@@ -1,16 +1,23 @@
 {
-  "name": "order-validated-sink",
+  "name": "orders-validated",
   "config": {
     "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
-    "tasks.max": "1",
     "connection.url": "jdbc:postgresql://db:5432/orders_db",
     "connection.user": "admin",
     "connection.password": "password",
     "topics": "orders.validated",
     "auto.create": "true",
-    "insert.mode": "insert",
+    "auto.evolve": "true",
+    "insert.mode": "upsert",
+    "pk.mode": "record_key",
+    "pk.fields": "orderId",
     "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "key.converter.schemas.enable": "false",
     "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-    "value.converter.schemas.enable": "false"
+    "value.converter.schemas.enable": "true",
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "order_sink_dlq",
+    "errors.deadletterqueue.topic.replication.factor": "1",
+    "schema.name.format": "public"
   }
 }

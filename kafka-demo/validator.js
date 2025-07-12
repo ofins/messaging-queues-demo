@@ -3,6 +3,21 @@ import { createConsumer, createProducer, TOPICS } from "./kafkaConfig.js";
 const consumer = createConsumer("order-validator-group");
 const producer = createProducer();
 
+const ORDER_SCHEMA_VALIDATED = {
+  type: "struct",
+  fields: [
+    { field: "orderId", type: "string" },
+    { field: "customerId", type: "string" },
+    { field: "amount", type: "double" },
+    { field: "item", type: "string" },
+    { field: "timestamp", type: "string" },
+    { field: "status", type: "string" },
+    { field: "validatedAt", type: "string", optional: true }, // Add optional for enrichment
+  ],
+  optional: false,
+  name: "OrderValidated",
+};
+
 const run = async () => {
   await producer.connect();
   await consumer.connect();
@@ -16,7 +31,9 @@ const run = async () => {
   await consumer.run({
     eachMessage: async ({ topic, partition, message }) => {
       try {
-        const rawOrder = JSON.parse(message.value.toString());
+        const parsedMessage = JSON.parse(message.value.toString());
+        const rawOrder = parsedMessage.payload;
+
         console.log(
           `[Validator] Received Order ${rawOrder.orderId} from Partition ${partition}. Validating...`
         );
@@ -27,12 +44,17 @@ const run = async () => {
           validatedAt: new Date().toISOString(),
         };
 
+        const messageValue = {
+          schema: ORDER_SCHEMA_VALIDATED,
+          payload: validateOrder,
+        };
+
         await producer.send({
           topic: TOPICS.ORDERS_VALIDATED,
           messages: [
             {
               key: validateOrder.orderId,
-              value: JSON.stringify(validateOrder),
+              value: JSON.stringify(messageValue),
             },
           ],
         });
