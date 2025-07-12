@@ -8,31 +8,22 @@ services:
     ports:
       - "9092:9092" # Expose client listener to host
     environment:
-      # --- KRaft Specific Core Configs ---
-      KAFKA_BROKER_ID: 1 # Unique ID for this broker/node
-      KAFKA_NODE_ID: 1 # For KRaft, broker.id and node.id are often the same
-      KAFKA_PROCESS_ROLES: broker,controller # This node will act as both a broker and a controller
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka1:9093,2@kafka2:9096" # Defines the controllers in the quorum (ID@host:port)
-      CLUSTER_ID: ${CLUSTER_ID} # Loading from .env file
-
-      # --- Listener Configurations for KRaft ---
-      # KRaft requires specific listeners:
-      # CLIENT:   For client connections (exposed to host)
-      # BROKER:   For inter-broker communication (replication, internal messaging)
-      # CONTROLLER: For KRaft controller quorum communication
+      KAFKA_BROKER_ID: 1
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka1:9093,2@kafka2:9096"
+      CLUSTER_ID: ${CLUSTER_ID} # <<< REPLACE THIS WITH YOUR ID
       KAFKA_LISTENERS: CLIENT://0.0.0.0:9092,BROKER://kafka1:9094,CONTROLLER://kafka1:9093
-      KAFKA_ADVERTISED_LISTENERS: CLIENT://localhost:9092,BROKER://kafka1:9094,CONTROLLER://kafka1:9093
+      KAFKA_ADVERTISED_LISTENERS: CLIENT://localhost:9092,BROKER://kafka1:9094,CONTROLLER://localhost:9093
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CLIENT:PLAINTEXT,BROKER:PLAINTEXT,CONTROLLER:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: BROKER # Listener for inter-broker communication
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER # Listener for controller communication
-
-      # --- Other Standard Kafka Configs ---
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2 # For a 2-broker cluster, this provides redundancy
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2 # Minimum in-sync replicas for transaction log
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2 # Replication for transaction log
-      KAFKA_LOG_DIRS: /tmp/kraft-kafka-logs # KRaft stores metadata and logs here
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true" # For development convenience
-      KAFKA_CFG_NUM_PARTITIONS: 1 # Default partitions for auto-created topics
+      KAFKA_INTER_BROKER_LISTENER_NAME: BROKER
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+      KAFKA_LOG_DIRS: /tmp/kraft-kafka-logs
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_NUM_PARTITIONS: 3
 
     # Optional: for persistent data
     # volumes:
@@ -45,39 +36,92 @@ services:
     ports:
       - "9095:9095" # Expose client listener to host (different port than kafka1)
     environment:
-      # --- KRaft Specific Core Configs (must match kafka1 where applicable) ---
-      KAFKA_BROKER_ID: 2 # Unique ID
+      KAFKA_BROKER_ID: 2
       KAFKA_NODE_ID: 2
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka1:9093,2@kafka2:9096" # Must match kafka1's voters
-      CLUSTER_ID: ${CLUSTER_ID} # <--- PASTE THE SAME ID HERE
-
-      # --- Listener Configurations for KRaft ---
-      # Note: Client/Broker/Controller internal ports are different from kafka1 but follow the same pattern
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka1:9093,2@kafka2:9096"
+      CLUSTER_ID: ${CLUSTER_ID} # <<< REPLACE THIS WITH THE SAME ID
       KAFKA_LISTENERS: CLIENT://0.0.0.0:9095,BROKER://kafka2:9097,CONTROLLER://kafka2:9096
       KAFKA_ADVERTISED_LISTENERS: CLIENT://localhost:9095,BROKER://kafka2:9097,CONTROLLER://localhost:9096
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CLIENT:PLAINTEXT,BROKER:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: BROKER
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-
-      # --- Other Standard Kafka Configs ---
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
       KAFKA_LOG_DIRS: /tmp/kraft-kafka-logs
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_CFG_NUM_PARTITIONS: 1
-
-    # In KRaft, you don't 'depend_on' Zookeeper, but controllers need to find each other.
-    # While not strictly necessary for Docker Compose (they'll start eventually),
-    # adding a 'depends_on' on another broker can sometimes help with initial election.
+      KAFKA_CFG_NUM_PARTITIONS: 3
     depends_on:
       - kafka1
 
-    # Optional: for persistent data
-    # volumes:
-    #   - kafka2-data:/tmp/kraft-kafka-logs
-# Optional: Define named volumes for persistent data
-# volumes:
-#   kafka1-data:
-#   kafka2-data:
+  db:
+    image: postgres:13
+    hostname: db
+    container_name: db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: orders_db
+    ports:
+      - "5433:5432" # Expose PostgreSQL to host
+
+  connect:
+    image: confluentinc/cp-kafka-connect:7.4.0
+    hostname: connect
+    container_name: connect
+    depends_on:
+      - kafka1
+      - kafka2
+      - db
+    ports:
+      - "8083:8083" # Expose Kafka Connect REST API
+    environment:
+      # Kafka Broker connectivity (internal Docker network addresses)
+      CONNECT_BOOTSTRAP_SERVERS: kafka1:9094,kafka2:9097
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: connect-cluster # A unique ID for your Connect cluster
+
+      # Topics for Connect's internal state (offsets, configs, status)
+      # These topics will be auto-created by Connect
+      CONNECT_CONFIG_STORAGE_TOPIC: connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: connect-status
+
+      # ADDED: Replication factors for internal topics (CRITICAL!)
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 2
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 2
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 2
+
+      # Converters for Kafka messages.
+      # Since your Node.js apps are sending JSON strings, JsonConverter is appropriate.
+      # json.schemas.enable=false is important if you are NOT using Schema Registry.
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false" # Important!
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false" # Important!
+
+      # Internal converters for Connect's own metadata (always use JsonConverter)
+      CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+
+      # Where Connect looks for plugins (JDBC connector should be here)
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+
+      # Other useful configs
+      CONNECT_PRODUCER_COMPRESSION_TYPE: snappy
+      CONNECT_CONSUMER_MAX_POLL_RECORDS: 500
+      CONNECT_OFFSET_FLUSH_INTERVAL_MS: 10000 # Flush offsets every 10 seconds
+      CONNECT_LOG4J_ROOT_LOGLEVEL: INFO # Reduce log verbosity if needed
+      CONNECT_REST_ADVERTISED_HOST_NAME: connect # CHANGED: Use container hostname
+
+    command: >
+      bash -c "
+      echo 'Installing compatible JDBC connector...' &&
+      confluent-hub install --no-prompt confluentinc/kafka-connect-jdbc:10.7.0 &&
+      echo 'Starting Kafka Connect...' &&
+      /etc/confluent/docker/run
+      "
+
+    # volumes: # Optional: for persistent Connect worker data (for state)
+    #   - connect-data:/var/lib/kafka-connect

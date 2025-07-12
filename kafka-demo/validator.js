@@ -37,7 +37,7 @@ const run = async () => {
           ],
         });
         console.log(
-          `[Validator] Validated & Sent Order ${validatedOrder.orderId} to ${TOPICS.ORDERS_VALIDATED}`
+          `[Validator] Validated & Sent Order ${validateOrder.orderId} to ${TOPICS.ORDERS_VALIDATED}`
         );
       } catch (error) {
         console.error(
