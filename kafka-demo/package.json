@@ -1,0 +1,17 @@
+{
+  "name": "kafka-demo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "consumer.js",
+  "type": "module",
+  "scripts": {
+    "start:producer": "node producer.js",
+    "start:consumer": "node consumer.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "kafkajs": "^2.2.4",
+    "uuid": "^11.1.0"
+  }
+}
