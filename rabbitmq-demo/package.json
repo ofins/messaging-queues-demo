@@ -1,12 +1,10 @@
 {
-  "name": "kafka-demo",
+  "name": "rabbitmq",
   "version": "1.0.0",
   "description": "",
-  "main": "consumer.js",
+  "main": "index.js",
   "type": "module",
   "scripts": {
-    "start:producer": "node producer.js",
-    "start:consumer": "node consumer.js",
     "compose:up": "docker-compose up -d",
     "compose:down": "docker-compose down",
     "compose:down:ro": "docker-compose down -v --remove-orphans"
@@ -14,7 +12,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "kafkajs": "^2.2.4",
-    "uuid": "^11.1.0"
+    "amqplib": "^0.10.8"
   }
 }
